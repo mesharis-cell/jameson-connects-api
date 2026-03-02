@@ -19,7 +19,10 @@ export async function generatePresignedUploadUrl(
   expiresIn: number = 600,
   contentType: string = 'audio/mpeg'
 ): Promise<{ uploadUrl: string; s3Key: string }> {
-  const s3Key = `recordings/${Date.now()}-${fileName}`;
+  const safeFileName = (fileName || 'recording.webm')
+    .replace(/^.*[\\/]/, '')
+    .replace(/[^A-Za-z0-9._-]/g, '') || 'recording.webm';
+  const s3Key = `recordings/${safeFileName}`;
 
   const command = new PutObjectCommand({
     Bucket: config.aws.s3Bucket,

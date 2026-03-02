@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { generatePresignedUploadUrl, generatePresignedDownloadUrl, uploadFile } from '../services/s3';
+import { generatePresignedUploadUrl, generatePresignedDownloadUrl, uploadFile, getAudioFile } from '../services/s3';
 import { sendRecordingEmail } from '../services/email';
 import {
   PresignUploadRequest,
@@ -23,11 +23,15 @@ export async function uploadRecordingHandler(req: Request, res: Response): Promi
 
     const contentType = (req.headers['content-type'] as string) || 'audio/webm';
     const fileNameHeader = req.headers['x-file-name'] as string;
-    const fileName =
+    const rawFileName =
       fileNameHeader && String(fileNameHeader).trim()
-        ? String(fileNameHeader).trim().replace(/^.*\//, '')
-        : `recording-${Date.now()}.webm`;
-    const s3Key = `recordings/${Date.now()}-${fileName}`;
+        ? String(fileNameHeader).trim()
+        : 'recording.webm';
+    const fileName = rawFileName
+      .replace(/^.*[\\/]/, '')
+      .replace(/[^A-Za-z0-9._-]/g, '');
+    const safeFileName = fileName || 'recording.webm';
+    const s3Key = `recordings/${safeFileName}`;
 
     await uploadFile(s3Key, body, contentType);
 
@@ -135,6 +139,38 @@ router.get('/download', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error generating download URL:', error);
     return res.status(500).json({ error: 'Failed to generate download URL' });
+  }
+});
+
+// Download raw audio file via API proxy (keeps downloader simple and avoids CORS issues)
+router.get('/download/file', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const key = req.query.key as string;
+    if (!key) {
+      res.status(400).json({ error: 'Query parameter "key" (s3Key) is required' });
+      return;
+    }
+
+    const audioBuffer = await getAudioFile(key);
+    const fileName = key.split('/').pop() || 'recording.wav';
+    const ext = fileName.includes('.') ? fileName.slice(fileName.lastIndexOf('.')).toLowerCase() : '';
+    const contentTypeByExt: Record<string, string> = {
+      '.wav': 'audio/wav',
+      '.webm': 'audio/webm',
+      '.mp3': 'audio/mpeg',
+      '.m4a': 'audio/mp4',
+      '.mp4': 'audio/mp4',
+    };
+    const contentType = contentTypeByExt[ext] || 'application/octet-stream';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.status(200).send(audioBuffer);
+    return;
+  } catch (error) {
+    console.error('Error downloading audio file:', error);
+    res.status(500).json({ error: 'Failed to download audio file' });
+    return;
   }
 });
 
