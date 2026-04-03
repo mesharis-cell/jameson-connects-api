@@ -3,6 +3,13 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../config';
 import { Readable } from 'stream';
 
+console.log('[S3] Initializing client:', {
+  region: config.aws.region,
+  bucket: config.aws.s3Bucket,
+  accessKeyId: config.aws.accessKeyId ? config.aws.accessKeyId.slice(0, 8) + '...' : 'MISSING',
+  secretAccessKey: config.aws.secretAccessKey ? '***set***' : 'MISSING',
+});
+
 const s3Client = new S3Client({
   region: config.aws.region,
   credentials: {
